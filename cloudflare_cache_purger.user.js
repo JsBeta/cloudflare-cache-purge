@@ -4,16 +4,17 @@
 // @version      1.0.0
 // @description  一次点击清除当前页面资源在Cloudflare中的缓存！
 // @author       xuwei
-// @license MIT
-// @downloadURL  https://raw.githubusercontent.com/JsBeta/cloudflare-cache-purge/main/cloudflare_cache_purger.user.js
-// @updateURL    https://raw.githubusercontent.com/JsBeta/cloudflare-cache-purge/main/cloudflare_cache_purger.user.js
+// @license      MIT
 // @connect      api.cloudflare.com
-// @match        *://*/*
+// @match        www.anycloner.com
+// @match        www.anyviewer.com
 // @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addStyle
+// @downloadURL  https://raw.githubusercontent.com/JsBeta/cloudflare-cache-purge/main/cloudflare_cache_purger.user.js
+// @updateURL    https://raw.githubusercontent.com/JsBeta/cloudflare-cache-purge/main/cloudflare_cache_purger.user.js
 // ==/UserScript==
 
 (function() {
@@ -24,7 +25,7 @@
     };
 
     // 添加配置菜单
-    GM_registerMenuCommand('Configure Cloudflare API', function() {
+    GM_registerMenuCommand('配置 API Token', function() {
         const apiToken = prompt('请输入您的 Cloudflare API Token:', config.apiToken);
         if (apiToken !== null) {
             GM_setValue('cfApiToken', apiToken);
