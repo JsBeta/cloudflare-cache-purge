@@ -1,9 +1,12 @@
 // ==UserScript==
 // @name         Cloudflare 缓存清理
-// @namespace    http://tampermonkey.net/
-// @version      1.0
+// @namespace    https://github.com/JsBeta/cloudflare-cache-purge/
+// @version      1.0.0
 // @description  一次点击清除当前页面资源在Cloudflare中的缓存！
 // @author       xuwei
+// @license MIT
+// @downloadURL  https://raw.githubusercontent.com/JsBeta/cloudflare-cache-purge/main/cloudflare_cache_purger.user.js
+// @updateURL    https://raw.githubusercontent.com/JsBeta/cloudflare-cache-purge/main/cloudflare_cache_purger.user.js
 // @connect      api.cloudflare.com
 // @match        *://*/*
 // @grant        GM_registerMenuCommand
@@ -22,7 +25,7 @@
 
     // 添加配置菜单
     GM_registerMenuCommand('Configure Cloudflare API', function() {
-        const apiToken = prompt('Enter your Cloudflare API Token:', config.apiToken);
+        const apiToken = prompt('请输入您的 Cloudflare API Token:', config.apiToken);
         if (apiToken !== null) {
             GM_setValue('cfApiToken', apiToken);
             config.apiToken = apiToken;
@@ -30,7 +33,7 @@
     });
 
     // 添加清除缓存菜单和页面按钮
-    GM_registerMenuCommand('Purge Current Page Cache', purgeCurrentPageCache);
+    GM_registerMenuCommand('清除当前缓存', purgeCurrentPageCache);
 
 
     // 创建悬浮按钮
@@ -138,6 +141,7 @@
     // 在purgeCurrentPageCache中添加阶段标记
     async function purgeCurrentPageCache() {
         console.log('开始清除缓存流程');
+        if (!validateConfig()) return;
         let domain = new URL(window.location.href).hostname;
         // 去除domain的www前缀
         domain = domain.replace(/^www\./, '');
@@ -153,7 +157,7 @@
     }
     // 清除当前页面缓存
     function purgeCache(zongeId) {
-        if (!validateConfig()) return;
+       
 
         const currentUrl = window.location.href;
         const apiUrl = `https://api.cloudflare.com/client/v4/zones/${zongeId}/purge_cache`;
