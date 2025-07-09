@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Cloudflare 缓存清理
 // @namespace    https://github.com/JsBeta/cloudflare-cache-purge/
-// @version      1.0.0
+// @version      1.0.1
 // @description  一次点击清除当前页面资源在Cloudflare中的缓存！
 // @author       xuwei
 // @license      MIT
