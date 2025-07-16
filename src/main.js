@@ -1,0 +1,413 @@
+import style from "./styles/main.less";
+
+GM_notification({
+    text: "This is a notification",
+    title: "Notification Title",
+    timeout: 4000,
+});
+
+// 配置信息
+let config = {
+    apiToken: GM_getValue("cfApiToken", ""),
+};
+
+// 添加配置菜单
+GM_registerMenuCommand("配置 API Token", function () {
+    const apiToken = prompt(
+        "请输入您的 Cloudflare API Token:",
+        config.apiToken
+    );
+    if (apiToken !== null) {
+        GM_setValue("cfApiToken", apiToken);
+        config.apiToken = apiToken;
+    }
+});
+
+// 添加清除缓存菜单和页面按钮
+GM_registerMenuCommand("清除当前地址缓存", function () {
+    clearCache([window.location.href]);
+});
+// 修改验证配置
+function validateConfig() {
+    if (!config.apiToken) {
+        alert("请先配置Cloudflare API Token.");
+        return false;
+    }
+    return true;
+}
+
+// 查找zoneid
+async function getZoneId(domain) {
+    return new Promise((resolve) => {
+        console.log("正在获取域名:", domain);
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: `https://api.cloudflare.com/client/v4/zones?name=${domain}`,
+            headers: {
+                Authorization: `Bearer ${config.apiToken}`,
+                "Content-Type": "application/json",
+            },
+            onload: function (response) {
+                console.log("API响应状态:", response.status);
+                const data = JSON.parse(response.responseText);
+                console.log("完整API响应:", data);
+                if (data.result) {
+                    resolve(data.result[0]?.id);
+                } else {
+                    resolve(null);
+                }
+            },
+            onerror: function (error) {
+                console.error("获取Zone ID失败:", error);
+                resolve(null);
+            },
+        });
+    });
+}
+
+// 清除缓存函数
+async function clearCache(urls) {
+    console.log("开始清除缓存流程");
+    if (!urls.length) {
+        alert("请选择或者输入需要清除的缓存项！");
+        return;
+    }
+    if (!validateConfig()) return;
+    let domain = new URL(window.location.href).hostname;
+    // 去除domain的www前缀
+    domain = domain.replace(/^www\./, "");
+    console.log("解析出的域名:", domain);
+    const zoneId = await getZoneId(domain);
+    if (!zoneId) {
+        alert("未找到该域名对应的Cloudflare zone,请检查域名是否正确！");
+        return;
+    }
+    // 使用动态zoneId发送请求...
+    await purgeCache(zoneId, urls);
+}
+
+// 清除缓存封装
+function purgeCache(zongeId, urls) {
+    const apiUrl = `https://api.cloudflare.com/client/v4/zones/${zongeId}/purge_cache`;
+    console.log(
+        "%c [ 需要清除的urls ]: ",
+        "color: #bf2c9f; background: pink; font-size: 13px;",
+        urls
+    );
+    GM_xmlhttpRequest({
+        method: "POST",
+        url: apiUrl,
+        headers: {
+            Authorization: `Bearer ${config.apiToken}`,
+            "Content-Type": "application/json",
+        },
+        data: JSON.stringify({
+            files: [...urls],
+        }),
+        onload: function (response) {
+            const result = JSON.parse(response.responseText);
+            if (result.success) {
+                alert("缓存清理成功!");
+                // 刷新当前页面
+                window.location.reload();
+            } else {
+                alert(
+                    "Failed to purge cache: " +
+                        (result.errors?.[0]?.message || "Unknown error")
+                );
+            }
+        },
+        onerror: function (error) {
+            alert("Error purging cache: " + error.responseText);
+        },
+    });
+}
+
+// 获取资源链接
+const getResources = () => {
+    const blacklistedPatterns = [
+        /analytics\.example\.com/,
+        /www\.clarity/,
+        /www\.google/,
+        /app\.termly/,
+    ];
+    const jsLinks = Array.from(document.scripts)
+        .map((s) => s.src)
+        .filter(Boolean)
+        .filter(
+            (url) => !blacklistedPatterns.some((pattern) => pattern.test(url))
+        );
+    const cssLinks = Array.from(
+        document.querySelectorAll('link[rel="stylesheet"]')
+    ).map((link) => link.href);
+    const imgLinks = Array.from(document.images)
+        .map((img) => img.src)
+        .filter(Boolean);
+    const cssBgImages = new Set();
+    Array.from(document.querySelectorAll("*")).forEach((el) => {
+        const bg = getComputedStyle(el).backgroundImage;
+        const m = bg.match(/url\(["']?(.*?)["']?\)/);
+        if (m && m[1]) cssBgImages.add(m[1]);
+    });
+
+    const allImages = Array.from(new Set([...imgLinks, ...cssBgImages]));
+    return {
+        js: jsLinks,
+        css: cssLinks,
+        img: allImages,
+    };
+};
+
+// 图片瀑布流布局
+const layoutMasonry = (containerSelector, columnCount = 4, spacing = 10) => {
+    const container = document.querySelector(containerSelector);
+    if (!container) return;
+
+    const items = Array.from(container.querySelectorAll("label"));
+    if (items.length === 0) return;
+
+    const itemWidth = 200 + spacing * 2; // 每个图片项的宽度（含左右 margin）
+    let columnHeights = Array(columnCount).fill(0); // 存储每一列的高度
+
+    items.forEach((item) => {
+        // 找到当前最短的一列
+        const minHeight = Math.min(...columnHeights);
+        const colIndex = columnHeights.indexOf(minHeight);
+
+        // 设置绝对定位位置
+        item.style.left = `${colIndex * itemWidth}px`;
+        item.style.top = `${minHeight}px`;
+
+        // 更新该列的高度
+        const itemHeight = item.offsetHeight;
+        columnHeights[colIndex] += itemHeight;
+    });
+};
+
+// 创建资源列表面板;
+const createResourcePanel = (picArray, type) => {
+    const container = document.createElement("div");
+    container.classList.add(style.panel);
+    container.innerHTML = `
+        <div class="${style.head}">
+            <span class="title">资源列表</span>
+            <svg data-id="panel-close" class="${
+                style.close
+            }" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                <polygon
+                    data-id="panel-close"
+                    points="35.31 9.86 24 21.17 12.69 9.86 9.86 12.69 21.17 24 9.86 35.31 12.69 38.14 24 26.83 35.31 38.14 38.14 35.31 26.83 24 38.14 12.69 35.31 9.86" />
+            </svg>
+        </div>
+        <div id="${type === "img" ? "x-panel-wall" : ""}" 
+        class="${type === "img" ? style.wall : style.list}">
+            ${picArray
+                .map(
+                    (url) =>
+                        `
+                        <label class="${style.item}">
+                            <input type="checkbox" value="${url}"/>
+                            ${
+                                type === "img"
+                                    ? `<img src="${url}" />`
+                                    : `<span>${url}</span>`
+                            }
+                        </label>
+                    `
+                )
+                .join("\n")}
+        </div>
+        <div class="${style.foot}">
+            <button  data-id="panel-close">取消</button>
+            <button data-id="panel-submit" data-type="${type}">清除</button>
+        </div>
+    
+`;
+    return container;
+};
+
+// 创建输入框面板;
+const createInputPanel = (type) => {
+    const container = document.createElement("div");
+    container.classList.add(style.panel);
+    container.innerHTML = `
+        <div class="${style.head}">
+            <span class="title">清除多个url链接</span>
+            <svg data-id="panel-close" class="${style.close}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                <polygon
+                    data-id="panel-close"
+                    points="35.31 9.86 24 21.17 12.69 9.86 9.86 12.69 21.17 24 9.86 35.31 12.69 38.14 24 26.83 35.31 38.14 38.14 35.31 26.83 24 38.14 12.69 35.31 9.86" />
+            </svg>
+        </div>
+        <div 
+        class="${style.inputarea}">
+            <textarea cols="80" rows="6" name="inputarea" placeholder="输入url链接,多个链接需要另取一行"></textarea>
+        </div>
+        <div class="${style.foot}">
+            <button  data-id="panel-close">取消</button>
+            <button data-id="panel-submit" data-type="${type}">清除</button>
+        </div>
+    
+`;
+    return container;
+};
+
+// 创建侧边菜单
+const createMenu = () => {
+    const menuEle = document.createElement("div");
+    menuEle.classList.add(style.menu);
+    const entryEle = document.createElement("div"); // 入口按钮
+    entryEle.classList.add(style.entry);
+    entryEle.innerHTML = `
+            <svg class="${style.icon}" width="36" height="36" viewBox="0 0 1024 1024" version="1.1"
+                xmlns="http://www.w3.org/2000/svg">
+                <path fill="#8D929C"
+                    d="M896 512A384 384 0 0 0 533.333333 129.066667h-21.333333A384 384 0 0 0 129.066667 490.666667v21.333333A384 384 0 0 0 490.666667 896h21.333333a384 384 0 0 0 384-362.666667v-21.333333z m-85.333333 0v13.013333a128 128 0 0 1-249.813334 23.893334A213.333333 213.333333 0 0 0 721.066667 298.666667 298.666667 298.666667 0 0 1 810.666667 512zM512 213.333333h13.013333a128 128 0 0 1 23.893334 249.813334A213.333333 213.333333 0 0 0 298.666667 302.933333 298.666667 298.666667 0 0 1 512 213.333333zM213.333333 512v-13.013333a128 128 0 0 1 249.813334-23.893334A213.333333 213.333333 0 0 0 302.933333 725.333333 298.666667 298.666667 0 0 1 213.333333 512z m298.666667 298.666667h-13.013333a128 128 0 0 1-23.893334-249.813334A213.333333 213.333333 0 0 0 725.333333 721.066667 298.666667 298.666667 0 0 1 512 810.666667z" />
+            </svg>`;
+    const menuUlEle = document.createElement("ul"); // 入口菜单列表
+    menuUlEle.innerHTML = `
+            <li>
+                <div class="${style.item}" data-id="imgs">
+                    <svg class="${style.icon}" width="24" height="24" viewBox="0 0 1024 1024" version="1.1"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path fill="#8D929C"
+                            d="M853.333333 682.666667v-42.666667a42.666667 42.666667 0 0 0-85.333333 0v170.666667a42.666667 42.666667 0 0 0 85.333333 0h-42.666666v-85.333334h128v85.333334a128 128 0 0 1-256 0v-170.666667a128 128 0 0 1 256 0v42.666667z m-512-85.333334v-85.333333H85.333333v85.333333h85.333334v256H85.333333v85.333334h256v-85.333334h-85.333333V597.333333z m298.666667-85.333333v426.666667h-85.333333V654.293333l-42.666667 56.746667-42.666667-56.746667V938.666667h-85.333333V512h85.333333l42.666667 56.96L554.666667 512z m85.333333-426.666667l213.333334 213.333334v170.666666h-85.333334v-135.253333L689.92 170.666667H170.666667v298.666666H85.333333V85.333333z" />
+                    </svg>
+                    图片文件
+                </div>
+            </li>
+            <li>
+                <div class="${style.item}" data-id="css">
+                    <svg class="${style.icon}" width="24" height="24" viewBox="0 0 1024 1024" version="1.1"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path fill="#8D929C"
+                            d="M725.333333 85.333333l213.333334 213.333334v170.666666h-85.333334v-135.253333L689.92 170.666667H170.666667v298.666666H85.333333V85.333333zM256 768v42.666667a42.666667 42.666667 0 0 1-85.333333 0v-170.666667a42.666667 42.666667 0 0 1 85.333333 0v42.666667h85.333333v-42.666667a128 128 0 0 0-256 0v170.666667a128 128 0 0 0 256 0v-42.666667z m256-85.333333a42.666667 42.666667 0 1 1 42.666667-42.666667h85.333333a128 128 0 1 0-128 128 42.666667 42.666667 0 1 1-42.666667 42.666667h-85.333333a128 128 0 1 0 128-128z m298.666667 0a42.666667 42.666667 0 1 1 42.666666-42.666667h85.333334a128 128 0 1 0-128 128 42.666667 42.666667 0 1 1-42.666667 42.666667h-85.333333a128 128 0 1 0 128-128z" />
+                    </svg>
+                    CSS文件
+                </div>
+            </li>
+            <li>
+                <div class="${style.item}" data-id="js">
+                    <svg class="${style.icon}" width="24" height="24" viewBox="0 0 1024 1024" version="1.1"
+                        xmlns="http://www.w3.org/2000/svg">
+                        <path fill="#8D929C"
+                            d="M938.666667 298.666667v640H682.666667v-85.333334h170.666666V334.08L689.92 170.666667H170.666667v298.666666H85.333333V85.333333h640zM512 682.666667a42.666667 42.666667 0 1 1 42.666667-42.666667h85.333333a128 128 0 1 0-128 128 42.666667 42.666667 0 1 1-42.666667 42.666667h-85.333333a128 128 0 1 0 128-128z m-256-170.666667v298.666667a42.666667 42.666667 0 0 1-85.333333 0v-42.666667H85.333333v42.666667a128 128 0 0 0 256 0V512z" />
+                    </svg>
+                    JS文件
+                </div>
+            </li>
+            <li>
+                <div class="${style.item}" data-id="link">
+                    <svg class="${style.icon}" width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                        <path fill="#8D929C"
+                            d="M18,44V30a6,6,0,0,1,12,0V44H26V30a2,2,0,0,0-4,0V44ZM16,28V24H4v4H8V40H4v4H16V40H12V28ZM34,4H4V22H8V8H32.34L40,15.66V22h4V14ZM32,24V44h4V24Zm12,0H40L36,34l4,10h4L40,34Z" />
+                    </svg>
+                    当前链接
+                </div>
+            </li>
+            <li>
+                <div class="${style.item}" data-id="urls">
+                    <svg class="${style.icon}" width="24" height="24" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                        <path fill="#8D929C"
+                            d="M44,40v4H32V24h4V40ZM40,15.66V22h4V14L34,4H4V22H8V8H32.34ZM28.08,34.39,30,44H26l-1.6-8L24,36H22v8H18V24h6a6,6,0,0,1,4.08,10.39ZM24,32a2,2,0,0,0,0-4H22v4ZM12,24V38a2,2,0,0,1-4,0V24H4V38a6,6,0,0,0,12,0V24Z" />
+                    </svg>
+                    多个链接
+                </div>
+            </li>
+
+    `;
+
+    menuEle.appendChild(entryEle);
+    menuEle.appendChild(menuUlEle);
+    return menuEle;
+};
+
+if (window.self === window.top) {
+    window.addEventListener("load", function () {
+        const xtoolsEle = document.createElement("div");
+        const menuEle = createMenu();
+        const resources = getResources();
+        const picPanelEle = createResourcePanel(resources.img, "img");
+        const cssPanelEle = createResourcePanel(resources.css, "css");
+        const jsPanelEle = createResourcePanel(resources.js, "js");
+        const inputPanelEle = createInputPanel("urls");
+
+        // 遍历childNodes，移除show样式
+        const closePanel = (nodes) => {
+            nodes.forEach((node) => {
+                node.classList.remove(style.show);
+            });
+        };
+
+        // 对菜单项的点击事件进行监听
+        xtoolsEle.addEventListener("click", function (e) {
+            e.stopPropagation();
+            switch (e.target.dataset.id) {
+                case "imgs":
+                    // 选择图片
+                    closePanel(this.childNodes);
+                    picPanelEle.classList.add(style.show);
+                    layoutMasonry("#x-panel-wall", 4);
+                    break;
+                case "css":
+                    // 选择css
+                    closePanel(this.childNodes);
+                    cssPanelEle.classList.add(style.show);
+                    break;
+                case "js":
+                    // 选择js
+                    closePanel(this.childNodes);
+                    jsPanelEle.classList.add(style.show);
+                    break;
+                case "link":
+                    // 清除当前link
+                    clearCache([window.location.href]);
+                    break;
+                case "urls":
+                    closePanel(this.childNodes);
+                    // 输入urls
+                    inputPanelEle.classList.add(style.show);
+                    break;
+
+                case "panel-submit":
+                    {
+                        // 获取inputPanelEle中textarea的value 以回车分割成数组 // 如果textarea 为空 则返回空数组
+                        const inputUrls = inputPanelEle
+                            .querySelector("textarea")
+                            .value.split("\n")
+                            .filter(Boolean);
+
+                        const selected = [
+                            ...xtoolsEle.querySelectorAll(
+                                "input[type='checkbox']:checked"
+                            ),
+                        ].map((c) => c.value);
+
+                        clearCache([...inputUrls, ...selected]);
+                    }
+                    break;
+                case "panel-close":
+                    // 遍历childNodes，移除show样式
+                    closePanel(this.childNodes);
+                    // 遍历所有的checkbox,取消选中
+                    this.querySelectorAll("input[type=checkbox]").forEach(
+                        (checkbox) => {
+                            checkbox.checked = false;
+                        }
+                    );
+                    // 清空textarea的值
+                    this.querySelector("textarea").value = "";
+                    break;
+                default:
+                    break;
+            }
+        });
+
+        xtoolsEle.appendChild(menuEle);
+        xtoolsEle.appendChild(picPanelEle);
+        xtoolsEle.appendChild(cssPanelEle);
+        xtoolsEle.appendChild(jsPanelEle);
+        xtoolsEle.appendChild(inputPanelEle);
+        document.body.appendChild(xtoolsEle);
+    });
+}
