@@ -1,6 +1,5 @@
 import style from "./styles/main.less";
 
-
 // 配置信息
 let config = {
     apiToken: GM_getValue("cfApiToken", ""),
@@ -107,16 +106,36 @@ function purgeCache(zongeId, urls) {
                 window.location.reload();
             } else {
                 alert(
-                    "Failed to purge cache: " +
+                    "API请求清理缓存失败(onload):" +
                         (result.errors?.[0]?.message || "Unknown error")
                 );
             }
         },
         onerror: function (error) {
-            alert("Error purging cache: " + error.responseText);
+            alert("API请求清理缓存失败(onerror): " + error.responseText);
         },
     });
 }
+
+// 获取当前链接请求响应头
+const getCfResponseHeaders = async (url) => {
+    return new Promise((resolve) => {
+        GM_xmlhttpRequest({
+            method: "HEAD",
+            url,
+            onload: function (response) {
+                // 返回响应头中的cf-cache-status字段
+                const cfCacheStatusMatch = response.responseHeaders.match(/cf-cache-status:\s*(.+)/i);
+                const cfCacheStatusValue = cfCacheStatusMatch ? cfCacheStatusMatch[1] : null;
+                resolve(cfCacheStatusValue);
+            },
+            onerror: function (error) {
+                console.error("获取响应头失败:", error);
+                resolve(null);
+            },
+        });
+    });
+};
 
 // 获取资源链接
 const getResources = () => {
@@ -318,91 +337,94 @@ const createMenu = () => {
 };
 
 if (window.self === window.top) {
-    window.addEventListener("load", function () {
-        const xtoolsEle = document.createElement("div");
-        const menuEle = createMenu();
-        const resources = getResources();
-        const picPanelEle = createResourcePanel(resources.img, "img");
-        const cssPanelEle = createResourcePanel(resources.css, "css");
-        const jsPanelEle = createResourcePanel(resources.js, "js");
-        const inputPanelEle = createInputPanel("urls");
+    getCfResponseHeaders(window.location.href).then((res) => {
+        if (res) {
+            window.addEventListener("load", function() {
+                const xtoolsEle = document.createElement("div");
+                const menuEle = createMenu();
+                const resources = getResources();
+                const picPanelEle = createResourcePanel(resources.img, "img");
+                const cssPanelEle = createResourcePanel(resources.css, "css");
+                const jsPanelEle = createResourcePanel(resources.js, "js");
+                const inputPanelEle = createInputPanel("urls");
 
-        // 遍历childNodes，移除show样式
-        const closePanel = (nodes) => {
-            nodes.forEach((node) => {
-                node.classList.remove(style.show);
-            });
-        };
+                // 遍历childNodes，移除show样式
+                const closePanel = (nodes) => {
+                    nodes.forEach((node) => {
+                        node.classList.remove(style.show);
+                    });
+                };
 
-        // 对菜单项的点击事件进行监听
-        xtoolsEle.addEventListener("click", function (e) {
-            e.stopPropagation();
-            switch (e.target.dataset.id) {
-                case "imgs":
-                    // 选择图片
-                    closePanel(this.childNodes);
-                    picPanelEle.classList.add(style.show);
-                    layoutMasonry("#x-panel-wall", 4);
-                    break;
-                case "css":
-                    // 选择css
-                    closePanel(this.childNodes);
-                    cssPanelEle.classList.add(style.show);
-                    break;
-                case "js":
-                    // 选择js
-                    closePanel(this.childNodes);
-                    jsPanelEle.classList.add(style.show);
-                    break;
-                case "link":
-                    // 清除当前link
-                    clearCache([window.location.href]);
-                    break;
-                case "urls":
-                    closePanel(this.childNodes);
-                    // 输入urls
-                    inputPanelEle.classList.add(style.show);
-                    break;
+                // 对菜单项的点击事件进行监听
+                xtoolsEle.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    switch (e.target.dataset.id) {
+                        case "imgs":
+                            // 选择图片
+                            closePanel(this.childNodes);
+                            picPanelEle.classList.add(style.show);
+                            layoutMasonry("#x-panel-wall", 4);
+                            break;
+                        case "css":
+                            // 选择css
+                            closePanel(this.childNodes);
+                            cssPanelEle.classList.add(style.show);
+                            break;
+                        case "js":
+                            // 选择js
+                            closePanel(this.childNodes);
+                            jsPanelEle.classList.add(style.show);
+                            break;
+                        case "link":
+                            // 清除当前link
+                            clearCache([window.location.href]);
+                            break;
+                        case "urls":
+                            closePanel(this.childNodes);
+                            // 输入urls
+                            inputPanelEle.classList.add(style.show);
+                            break;
 
-                case "panel-submit":
-                    {
-                        // 获取inputPanelEle中textarea的value 以回车分割成数组 // 如果textarea 为空 则返回空数组
-                        const inputUrls = inputPanelEle
-                            .querySelector("textarea")
-                            .value.split("\n")
-                            .filter(Boolean);
+                        case "panel-submit": {
+                            // 获取inputPanelEle中textarea的value 以回车分割成数组 // 如果textarea 为空 则返回空数组
+                            const inputUrls = inputPanelEle
+                                .querySelector("textarea")
+                                .value.split("\n")
+                                .filter(Boolean);
 
-                        const selected = [
-                            ...xtoolsEle.querySelectorAll(
-                                "input[type='checkbox']:checked"
-                            ),
-                        ].map((c) => c.value);
+                            const selected = [
+                                ...xtoolsEle.querySelectorAll(
+                                    "input[type='checkbox']:checked"
+                                ),
+                            ].map((c) => c.value);
 
-                        clearCache([...inputUrls, ...selected]);
-                    }
-                    break;
-                case "panel-close":
-                    // 遍历childNodes，移除show样式
-                    closePanel(this.childNodes);
-                    // 遍历所有的checkbox,取消选中
-                    this.querySelectorAll("input[type=checkbox]").forEach(
-                        (checkbox) => {
-                            checkbox.checked = false;
+                            clearCache([...inputUrls, ...selected]);
                         }
-                    );
-                    // 清空textarea的值
-                    this.querySelector("textarea").value = "";
-                    break;
-                default:
-                    break;
-            }
-        });
+                        break;
+                    case "panel-close":
+                        // 遍历childNodes，移除show样式
+                        closePanel(this.childNodes);
+                        // 遍历所有的checkbox,取消选中
+                        this.querySelectorAll("input[type=checkbox]").forEach(
+                            (checkbox) => {
+                                checkbox.checked = false;
+                            }
+                        );
+                        // 清空textarea的值
+                        this.querySelector("textarea").value = "";
+                        break;
+                    default:
+                        break;
+                    }
+                });
 
-        xtoolsEle.appendChild(menuEle);
-        xtoolsEle.appendChild(picPanelEle);
-        xtoolsEle.appendChild(cssPanelEle);
-        xtoolsEle.appendChild(jsPanelEle);
-        xtoolsEle.appendChild(inputPanelEle);
-        document.body.appendChild(xtoolsEle);
+                xtoolsEle.appendChild(menuEle);
+                xtoolsEle.appendChild(picPanelEle);
+                xtoolsEle.appendChild(cssPanelEle);
+                xtoolsEle.appendChild(jsPanelEle);
+                xtoolsEle.appendChild(inputPanelEle);
+                document.body.appendChild(xtoolsEle);
+            });
+        }
     });
 }
