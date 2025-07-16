@@ -1,10 +1,5 @@
 import style from "./styles/main.less";
 
-GM_notification({
-    text: "This is a notification",
-    title: "Notification Title",
-    timeout: 4000,
-});
 
 // 配置信息
 let config = {
