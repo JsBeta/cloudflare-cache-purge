@@ -33,7 +33,7 @@ function validateConfig() {
 // 查找zoneid
 async function getZoneId(domain) {
     return new Promise((resolve) => {
-        console.log("正在获取域名:", domain);
+        console.debug("正在获取域名:", domain);
         GM_xmlhttpRequest({
             method: "GET",
             url: `https://api.cloudflare.com/client/v4/zones?name=${domain}`,
@@ -42,9 +42,9 @@ async function getZoneId(domain) {
                 "Content-Type": "application/json",
             },
             onload: function(response) {
-                console.log("API响应状态:", response.status);
+                console.debug("API响应状态:", response.status);
                 const data = JSON.parse(response.responseText);
-                console.log("完整API响应:", data);
+                console.debug("完整API响应:", data);
                 if (data.result) {
                     resolve(data.result[0]?.id);
                 } else {
@@ -61,7 +61,7 @@ async function getZoneId(domain) {
 
 // 清除缓存函数
 async function clearCache(urls) {
-    console.log("开始清除缓存流程");
+    console.debug("开始清除缓存流程");
     if (!urls.length) {
         alert("请选择或者输入需要清除的缓存项！");
         return;
@@ -70,7 +70,7 @@ async function clearCache(urls) {
     let domain = new URL(window.location.href).hostname;
     // 去除domain的www前缀
     domain = domain.replace(/^www\./, "");
-    console.log("解析出的域名:", domain);
+    console.debug("解析出的域名:", domain);
     const zoneId = await getZoneId(domain);
     if (!zoneId) {
         alert("未找到该域名对应的Cloudflare zone,请检查域名是否正确！");
@@ -83,7 +83,7 @@ async function clearCache(urls) {
 // 清除缓存封装
 function purgeCache(zongeId, urls) {
     const apiUrl = `https://api.cloudflare.com/client/v4/zones/${zongeId}/purge_cache`;
-    console.log(
+    console.debug(
         "%c [ 需要清除的urls ]: ",
         "color: #bf2c9f; background: pink; font-size: 13px;",
         urls
@@ -338,93 +338,98 @@ const createMenu = () => {
 
 if (window.self === window.top) {
     window.addEventListener("load", function() {
-        const xtoolsEle = document.createElement("div");
-        const menuEle = createMenu();
-        const resources = getResources();
-        const picPanelEle = createResourcePanel(resources.img, "img");
-        const cssPanelEle = createResourcePanel(resources.css, "css");
-        const jsPanelEle = createResourcePanel(resources.js, "js");
-        const inputPanelEle = createInputPanel("urls");
-
-        // 遍历childNodes，移除show样式
-        const closePanel = (nodes) => {
-            nodes.forEach((node) => {
-                node.classList.remove(style.show);
-            });
-        };
-
-        // 对菜单项的点击事件进行监听
-        xtoolsEle.addEventListener("click", function(e) {
-            e.stopPropagation();
-            switch (e.target.dataset.id) {
-                case "imgs":
-                    // 选择图片
-                    closePanel(this.childNodes);
-                    picPanelEle.classList.add(style.show);
-                    layoutMasonry("#x-panel-wall", 4);
-                    break;
-                case "css":
-                    // 选择css
-                    closePanel(this.childNodes);
-                    cssPanelEle.classList.add(style.show);
-                    break;
-                case "js":
-                    // 选择js
-                    closePanel(this.childNodes);
-                    jsPanelEle.classList.add(style.show);
-                    break;
-                case "link":
-                    // 清除当前link
-                    clearCache([window.location.href]);
-                    break;
-                case "urls":
-                    closePanel(this.childNodes);
-                    // 输入urls
-                    inputPanelEle.classList.add(style.show);
-                    break;
-
-                case "panel-submit": {
-                    // 获取inputPanelEle中textarea的value 以回车分割成数组 // 如果textarea 为空 则返回空数组
-                    const inputUrls = inputPanelEle
-                        .querySelector("textarea")
-                        .value.split("\n")
-                        .filter(Boolean);
-
-                    const selected = [
-                        ...xtoolsEle.querySelectorAll(
-                            "input[type='checkbox']:checked"
-                        ),
-                    ].map((c) => c.value);
-
-                    clearCache([...inputUrls, ...selected]);
-                }
-                break;
-            case "panel-close":
-                // 遍历childNodes，移除show样式
-                closePanel(this.childNodes);
-                // 遍历所有的checkbox,取消选中
-                this.querySelectorAll("input[type=checkbox]").forEach(
-                    (checkbox) => {
-                        checkbox.checked = false;
-                    }
-                );
-                // 清空textarea的值
-                this.querySelector("textarea").value = "";
-                break;
-            default:
-                break;
-            }
-        });
-
-        xtoolsEle.appendChild(menuEle);
-        xtoolsEle.appendChild(picPanelEle);
-        xtoolsEle.appendChild(cssPanelEle);
-        xtoolsEle.appendChild(jsPanelEle);
-        xtoolsEle.appendChild(inputPanelEle);
-
+        let xtoolsEle = null
         getCfResponseHeaders(window.location.href).then((res) => {
-            console.log('[ res ] >', res)
             if (res) {
+                console.info(
+                    `%c INFO %c 检测到当前网站经过 CloudFlare CDN 加速, 缓存清理小工具已经正常加载! %c`,
+                    `background:#909399;border:1px solid #909399; padding: 1px; border-radius: 2px 0 0 2px; color: #fff;`,
+                    `border:1px solid #909399; padding: 1px; border-radius: 0 2px 2px 0; color: #909399;`,
+                    'background:transparent'
+                );
+                xtoolsEle = document.createElement("div");
+                const menuEle = createMenu();
+                const resources = getResources();
+                const picPanelEle = createResourcePanel(resources.img, "img");
+                const cssPanelEle = createResourcePanel(resources.css, "css");
+                const jsPanelEle = createResourcePanel(resources.js, "js");
+                const inputPanelEle = createInputPanel("urls");
+
+                // 遍历childNodes，移除show样式
+                const closePanel = (nodes) => {
+                    nodes.forEach((node) => {
+                        node.classList.remove(style.show);
+                    });
+                };
+
+                // 对菜单项的点击事件进行监听
+                xtoolsEle.addEventListener("click", function(e) {
+                    e.stopPropagation();
+                    switch (e.target.dataset.id) {
+                        case "imgs":
+                            // 选择图片
+                            closePanel(this.childNodes);
+                            picPanelEle.classList.add(style.show);
+                            layoutMasonry("#x-panel-wall", 4);
+                            break;
+                        case "css":
+                            // 选择css
+                            closePanel(this.childNodes);
+                            cssPanelEle.classList.add(style.show);
+                            break;
+                        case "js":
+                            // 选择js
+                            closePanel(this.childNodes);
+                            jsPanelEle.classList.add(style.show);
+                            break;
+                        case "link":
+                            // 清除当前link
+                            clearCache([window.location.href]);
+                            break;
+                        case "urls":
+                            closePanel(this.childNodes);
+                            // 输入urls
+                            inputPanelEle.classList.add(style.show);
+                            break;
+
+                        case "panel-submit": {
+                            // 获取inputPanelEle中textarea的value 以回车分割成数组 // 如果textarea 为空 则返回空数组
+                            const inputUrls = inputPanelEle
+                                .querySelector("textarea")
+                                .value.split("\n")
+                                .filter(Boolean);
+
+                            const selected = [
+                                ...xtoolsEle.querySelectorAll(
+                                    "input[type='checkbox']:checked"
+                                ),
+                            ].map((c) => c.value);
+
+                            clearCache([...inputUrls, ...selected]);
+                        }
+                        break;
+                    case "panel-close":
+                        // 遍历childNodes，移除show样式
+                        closePanel(this.childNodes);
+                        // 遍历所有的checkbox,取消选中
+                        this.querySelectorAll("input[type=checkbox]").forEach(
+                            (checkbox) => {
+                                checkbox.checked = false;
+                            }
+                        );
+                        // 清空textarea的值
+                        this.querySelector("textarea").value = "";
+                        break;
+                    default:
+                        break;
+                    }
+                });
+
+                xtoolsEle.appendChild(menuEle);
+                xtoolsEle.appendChild(picPanelEle);
+                xtoolsEle.appendChild(cssPanelEle);
+                xtoolsEle.appendChild(jsPanelEle);
+                xtoolsEle.appendChild(inputPanelEle);
                 document.body.appendChild(xtoolsEle);
             }
         });
