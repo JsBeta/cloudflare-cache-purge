@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name           Cloudflare 缓存清除工具
 // @namespace      https://github.com/JsBeta/cloudflare-cache-purge/
-// @version        1.8.4
+// @version        1.8.5
 // @author         xuwei
 // @description    一个好用的 Cloudflare 缓存清理工具，支持清除当前页面链接缓存、图片/CSS/JS 资源缓存，以及自定义多个 URL 的缓存清除。
 // @icon           data:image/svg+xml;base64,PHN2ZyBjbGFzcz0iaWNvbiIgIHZpZXdCb3g9IjAgMCAxMDI0IDEwMjQiIHZlcnNpb249IjEuMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBmaWxsPSIjZTc4OTMwIiBkPSJNODAwLjIxMzMzMyA0MzQuMzQ2NjY3YTI5OC42NjY2NjcgMjk4LjY2NjY2NyAwIDAgMC01NjEuOTItNDEuNkEyMTMuMzMzMzMzIDIxMy4zMzMzMzMgMCAwIDAgMjk4LjY2NjY2NyA4MTAuNjY2NjY3aDQ0OGExOTIgMTkyIDAgMCAwIDUzLjU0NjY2Ni0zNzYuMzJ6TTc0Ni42NjY2NjcgNzI1LjMzMzMzM0gyOTguNjY2NjY3YTEyOCAxMjggMCAwIDEgMC0yNTZoNC4yNjY2NjZBMjEzLjMzMzMzMyAyMTMuMzMzMzMzIDAgMCAxIDcyNS4zMzMzMzMgNTEyYTcuMjUzMzMzIDcuMjUzMzMzIDAgMCAxIDAgMi4xMzMzMzMgMTIwLjk2IDEyMC45NiAwIDAgMSAyMS4zMzMzMzQtMi4xMzMzMzMgMTA2LjY2NjY2NyAxMDYuNjY2NjY3IDAgMCAxIDAgMjEzLjMzMzMzM3ogbS0yMzQuNjY2NjY3LTQyLjY2NjY2NmExNDkuMzMzMzMzIDE0OS4zMzMzMzMgMCAxIDEgMTQ5LjMzMzMzMy0xNDkuMzMzMzM0aC04NS4zMzMzMzNhNjQgNjQgMCAxIDAtNjQgNjR6IiAvPjwvc3ZnPg==
@@ -55,7 +55,7 @@
   };
 
   // 添加配置菜单
-  GM_registerMenuCommand("配置 API Token", function() {
+  GM_registerMenuCommand("配置 API Token", function () {
       const apiToken = prompt(
           "请输入您的 Cloudflare API Token:",
           config.apiToken
@@ -67,7 +67,7 @@
   });
 
   // 添加清除缓存菜单和页面按钮
-  GM_registerMenuCommand("清除当前地址缓存", function() {
+  GM_registerMenuCommand("清除当前地址缓存", function () {
       clearCache([window.location.href]);
   });
   // 修改验证配置
@@ -90,7 +90,7 @@
                   Authorization: `Bearer ${config.apiToken}`,
                   "Content-Type": "application/json",
               },
-              onload: function(response) {
+              onload: function (response) {
                   console.debug("API响应状态:", response.status);
                   const data = JSON.parse(response.responseText);
                   console.debug("完整API响应:", data);
@@ -100,7 +100,7 @@
                       resolve(null);
                   }
               },
-              onerror: function(error) {
+              onerror: function (error) {
                   console.error("获取Zone ID失败:", error);
                   resolve(null);
               },
@@ -117,8 +117,8 @@
       }
       if (!validateConfig()) return;
       let domain = new URL(window.location.href).hostname;
-      // 去除domain的www前缀
-      domain = domain.replace(/^www\./, "");
+      // 去除domain的一级前缀
+      domain = domain.replace(/^[a-zA-Z0-9]+\./, "");
       console.debug("解析出的域名:", domain);
       const zoneId = await getZoneId(domain);
       if (!zoneId) {
@@ -147,7 +147,7 @@
           data: JSON.stringify({
               files: [...urls],
           }),
-          onload: function(response) {
+          onload: function (response) {
               const result = JSON.parse(response.responseText);
               if (result.success) {
                   alert("缓存清理成功!");
@@ -156,11 +156,11 @@
               } else {
                   alert(
                       "API请求清理缓存失败(onload):" +
-                      (result.errors ?.[0]?.message || "Unknown error")
+                          (result.errors?.[0]?.message || "Unknown error")
                   );
               }
           },
-          onerror: function(error) {
+          onerror: function (error) {
               alert("API请求清理缓存失败(onerror): " + error.responseText);
           },
       });
@@ -172,13 +172,17 @@
           GM_xmlhttpRequest({
               method: "HEAD",
               url,
-              onload: function(response) {
+              onload: function (response) {
                   // 返回响应头中的cf-cache-status字段
-                  const cfCacheStatusMatch = response.responseHeaders.match(/cf-cache-status:\s*(.+)/i);
-                  const cfCacheStatusValue = cfCacheStatusMatch ? cfCacheStatusMatch[1] : null;
+                  const cfCacheStatusMatch = response.responseHeaders.match(
+                      /cf-cache-status:\s*(.+)/i
+                  );
+                  const cfCacheStatusValue = cfCacheStatusMatch
+                      ? cfCacheStatusMatch[1]
+                      : null;
                   resolve(cfCacheStatusValue);
               },
-              onerror: function(error) {
+              onerror: function (error) {
                   console.error("获取响应头失败:", error);
                   resolve(null);
               },
@@ -229,21 +233,30 @@
       const items = Array.from(container.querySelectorAll("label"));
       if (items.length === 0) return;
 
-      const itemWidth = 200 + spacing * 2; // 每个图片项的宽度（含左右 margin）
-      let columnHeights = Array(columnCount).fill(0); // 存储每一列的高度
+      requestAnimationFrame(() => {
+          const itemWidth = 200 + spacing * 2; // 每个图片项的宽度（含左右 margin）
+          let columnHeights = Array(columnCount).fill(0); // 存储每一列的高度
 
-      items.forEach((item) => {
-          // 找到当前最短的一列
-          const minHeight = Math.min(...columnHeights);
-          const colIndex = columnHeights.indexOf(minHeight);
+          items.forEach((item) => {
+              // 找到当前最短的一列
+              const minHeight = Math.min(...columnHeights);
+              const colIndex = columnHeights.indexOf(minHeight);
 
-          // 设置绝对定位位置
-          item.style.left = `${colIndex * itemWidth}px`;
-          item.style.top = `${minHeight}px`;
+              console.log(
+                  "%c [ item.offsetHeight ]: ",
+                  "color: #bf2c9f; background: pink; font-size: 13px;",
+                  item.offsetHeight,
+                  item.outHeight
+              );
 
-          // 更新该列的高度
-          const itemHeight = item.offsetHeight;
-          columnHeights[colIndex] += itemHeight;
+              // 设置绝对定位位置
+              item.style.left = `${colIndex * itemWidth}px`;
+              item.style.top = `${minHeight}px`;
+
+              // 更新该列的高度
+              const itemHeight = item.offsetHeight || 200;
+              columnHeights[colIndex] += itemHeight;
+          });
       });
   };
 
@@ -386,7 +399,7 @@
   };
 
   if (window.self === window.top) {
-      window.addEventListener("load", function() {
+      window.addEventListener("load", function () {
           let xtoolsEle = null;
           getCfResponseHeaders(window.location.href).then((res) => {
               if (res) {
@@ -394,7 +407,7 @@
                       `%c INFO %c 检测到当前网站经过 CloudFlare CDN 加速, 缓存清理小工具已经正常加载! %c`,
                       `background:#909399;border:1px solid #909399; padding: 1px; border-radius: 2px 0 0 2px; color: #fff;`,
                       `border:1px solid #909399; padding: 1px; border-radius: 0 2px 2px 0; color: #909399;`,
-                      'background:transparent'
+                      "background:transparent"
                   );
                   xtoolsEle = document.createElement("div");
                   const menuEle = createMenu();
@@ -412,7 +425,7 @@
                   };
 
                   // 对菜单项的点击事件进行监听
-                  xtoolsEle.addEventListener("click", function(e) {
+                  xtoolsEle.addEventListener("click", function (e) {
                       e.stopPropagation();
                       switch (e.target.dataset.id) {
                           case "imgs":
@@ -441,34 +454,35 @@
                               inputPanelEle.classList.add(style.show);
                               break;
 
-                          case "panel-submit": {
-                              // 获取inputPanelEle中textarea的value 以回车分割成数组 // 如果textarea 为空 则返回空数组
-                              const inputUrls = inputPanelEle
-                                  .querySelector("textarea")
-                                  .value.split("\n")
-                                  .filter(Boolean);
+                          case "panel-submit":
+                              {
+                                  // 获取inputPanelEle中textarea的value 以回车分割成数组 // 如果textarea 为空 则返回空数组
+                                  const inputUrls = inputPanelEle
+                                      .querySelector("textarea")
+                                      .value.split("\n")
+                                      .filter(Boolean);
 
-                              const selected = [
-                                  ...xtoolsEle.querySelectorAll(
-                                      "input[type='checkbox']:checked"
-                                  ),
-                              ].map((c) => c.value);
+                                  const selected = [
+                                      ...xtoolsEle.querySelectorAll(
+                                          "input[type='checkbox']:checked"
+                                      ),
+                                  ].map((c) => c.value);
 
-                              clearCache([...inputUrls, ...selected]);
-                          }
-                          break;
-                      case "panel-close":
-                          // 遍历childNodes，移除show样式
-                          closePanel(this.childNodes);
-                          // 遍历所有的checkbox,取消选中
-                          this.querySelectorAll("input[type=checkbox]").forEach(
-                              (checkbox) => {
-                                  checkbox.checked = false;
+                                  clearCache([...inputUrls, ...selected]);
                               }
-                          );
-                          // 清空textarea的值
-                          this.querySelector("textarea").value = "";
-                          break;
+                              break;
+                          case "panel-close":
+                              // 遍历childNodes，移除show样式
+                              closePanel(this.childNodes);
+                              // 遍历所有的checkbox,取消选中
+                              this.querySelectorAll(
+                                  "input[type=checkbox]"
+                              ).forEach((checkbox) => {
+                                  checkbox.checked = false;
+                              });
+                              // 清空textarea的值
+                              this.querySelector("textarea").value = "";
+                              break;
                       }
                   });
 
